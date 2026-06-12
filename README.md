@@ -1,5 +1,3 @@
-<img width="1107" height="752" alt="截圖 2026-06-12 晚上9 33 54" src="https://github.com/user-attachments/assets/ec2f3be3-574d-47f2-8286-38fd8071ddc6" /># Link Card Preview
-
 Turn bare URLs into Apple-style rich link cards — in Reading view, Live Preview, and Canvas.
 
 Inspired by the link previews in Apple Freeform, Notes, and Bear: clean cards with adaptive layouts, dominant-color tinting, and offline image caching.
