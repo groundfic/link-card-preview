@@ -13,7 +13,7 @@ The card layout is chosen automatically from the fetched image:
 - **Compact card** — small images and icons render as a square thumbnail on the right
 - **Text card** — no image at all: a slim row with favicon, title, and domain. No broken-image placeholders, ever.
 
-<img width="1498" height="1510" alt="Kapture 2026-06-12 at 21 31 01" src="https://github.com/user-attachments/assets/9dbb8459-5cca-445b-a196-e9e259bfd4b0" />
+<img alt="Kapture 2026-06-12 at 21 31 01" src="https://github.com/user-attachments/assets/9dbb8459-5cca-445b-a196-e9e259bfd4b0" style="max-width: 100%; height: auto;" />
 
 ### Canvas support
 
@@ -24,7 +24,7 @@ Pasting a URL onto a Canvas no longer embeds a live web page. The native link no
 - Double-click a card to open the link; single click/drag keeps the native select-and-move behavior
 - The bare-URL node label is hidden (the card already shows title and domain)
 
-<img width="1104" height="752" alt="截圖 2026-06-12 晚上9 34 23" src="https://github.com/user-attachments/assets/01ce02ca-3483-4921-8b0b-0fd91696c4e1" />
+<img alt="截圖 2026-06-12 晚上9 34 23" src="https://github.com/user-attachments/assets/01ce02ca-3483-4921-8b0b-0fd91696c4e1" style="max-width: 100%; height: auto;" />
 
 
 ### Live Preview support
