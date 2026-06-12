@@ -1,0 +1,341 @@
+/* ============ 基底（Apple 風格） ============ */
+.lcp-card {
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 12px;
+  overflow: hidden;
+  background: var(--background-primary);
+  margin: 0.75em 0;
+  max-width: 420px;
+  font-family: var(--font-interface);
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+.lcp-card:hover {
+  background: var(--background-secondary);
+}
+.lcp-card:active {
+  background: var(--background-modifier-hover);
+}
+
+.lcp-body {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 3px;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.lcp-title {
+  font-size: 0.88em;
+  font-weight: 600;
+  line-height: 1.35;
+  color: var(--text-normal);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.lcp-desc {
+  font-size: 0.78em;
+  color: var(--text-muted);
+  line-height: 1.5;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.lcp-domain {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.74em;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.lcp-favicon {
+  width: 14px;
+  height: 14px;
+  border-radius: 3px;
+  flex-shrink: 0;
+  object-fit: cover;
+}
+.lcp-favicon--fallback {
+  display: inline-flex;
+  color: var(--text-faint);
+}
+.lcp-favicon--fallback svg {
+  width: 13px;
+  height: 13px;
+}
+
+/* ============ 大卡：圖上文下，1.91:1 ============ */
+.lcp-card--large .lcp-hero {
+  width: 100%;
+  aspect-ratio: 1.91 / 1;
+  background-size: cover;
+  background-position: center;
+  background-color: var(--background-secondary);
+}
+.lcp-card--large .lcp-hero--portrait {
+  aspect-ratio: 1 / 1; /* 直向圖裁方形：保留更多內容、卡片不過長 */
+  background-position: center top; /* 截圖類內容重點通常在上方 */
+}
+.lcp-card--large .lcp-body {
+  padding: 10px 12px 11px;
+}
+
+/* ============ 緊湊卡：文字左、方形縮圖右 ============ */
+.lcp-card--compact {
+  display: flex;
+  align-items: stretch;
+  min-height: 76px;
+}
+.lcp-card--compact .lcp-body {
+  flex: 1;
+  padding: 10px 12px;
+}
+.lcp-thumb {
+  width: 76px;
+  min-width: 76px;
+  background-size: cover;
+  background-position: center;
+  background-color: var(--background-secondary);
+  border-left: 1px solid var(--background-modifier-border);
+  flex-shrink: 0;
+}
+
+/* ============ 純文字卡：單列、favicon＋標題＋網域 ============ */
+.lcp-card--text .lcp-body {
+  padding: 10px 12px;
+}
+.lcp-card--text .lcp-title {
+  -webkit-line-clamp: 1;
+}
+
+/* ============ Canvas：填滿節點、圖上文下 ============ */
+/* 隱藏 link node 上方的裸網址標籤——卡片已有標題與網域，標籤是重複資訊 */
+.canvas-node:has(.lcp-card--canvas) .canvas-node-label {
+  display: none;
+}
+.canvas-node-content .lcp-card--canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  border: none;
+  border-radius: inherit;
+  min-height: 0;
+  transition: none; /* 平移縮放時避免 transition 觸發 repaint */
+}
+.lcp-card--canvas:hover,
+.lcp-card--canvas:active {
+  background: var(--background-primary);
+}
+.lcp-card--canvas .lcp-hero {
+  width: 100%;
+  flex: 1 1 auto;
+  min-height: 0;
+  background-size: cover;
+  background-position: center;
+  background-color: var(--background-secondary);
+}
+.lcp-card--canvas .lcp-body {
+  flex: 0 0 auto;
+  padding: 11px 14px 12px;
+  gap: 4px;
+}
+.lcp-card--canvas-text .lcp-body {
+  flex: 1 1 auto;
+  justify-content: center;
+  padding: 16px 18px;
+  gap: 6px;
+}
+.lcp-card--canvas-text .lcp-title {
+  -webkit-line-clamp: 3;
+  font-size: 1em;
+}
+.lcp-card--canvas-text .lcp-desc {
+  -webkit-line-clamp: 4;
+}
+
+/* ============ 主色染色（Apple 式） ============ */
+.lcp-card--tinted {
+  background-color: rgba(var(--lcp-tint), 0.12);
+  border-color: rgba(var(--lcp-tint), 0.30);
+}
+.lcp-card--tinted:hover {
+  background-color: rgba(var(--lcp-tint), 0.18);
+}
+.lcp-card--tinted:active {
+  background-color: rgba(var(--lcp-tint), 0.25);
+}
+.lcp-card--tinted .lcp-hero,
+.lcp-card--tinted .lcp-thumb {
+  background-color: rgba(var(--lcp-tint), 0.25);
+}
+.lcp-card--tinted .lcp-thumb {
+  border-left-color: rgba(var(--lcp-tint), 0.30);
+}
+.lcp-card--canvas.lcp-card--tinted,
+.lcp-card--canvas.lcp-card--tinted:hover,
+.lcp-card--canvas.lcp-card--tinted:active {
+  background-color: rgba(var(--lcp-tint), 0.12);
+}
+
+/* ============ icon 卡（Canvas）：主色鋪滿、icon 置中、自適應文字 ============ */
+.lcp-card--canvas-icon .lcp-icon-stage {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.lcp-card--canvas-icon .lcp-icon-img {
+  width: 96px;
+  height: 96px;
+  object-fit: contain;
+  border-radius: 18px;
+  box-shadow: 0 2px 14px rgba(0, 0, 0, 0.18);
+}
+.lcp-card--canvas-icon .lcp-favicon {
+  display: none; /* icon 已是主角，網域列不再重複小圖示 */
+}
+.lcp-card--canvas-icon .lcp-body {
+  padding: 0 18px 16px;
+}
+.lcp-card--solid,
+.lcp-card--solid:hover,
+.lcp-card--solid:active {
+  background-color: rgb(var(--lcp-tint));
+  border-color: transparent;
+}
+.lcp-on-dark .lcp-title { color: #ffffff; }
+.lcp-on-dark .lcp-desc { color: rgba(255, 255, 255, 0.78); }
+.lcp-on-dark .lcp-domain { color: rgba(255, 255, 255, 0.72); }
+.lcp-on-dark .lcp-favicon--fallback { color: rgba(255, 255, 255, 0.72); }
+.lcp-on-light .lcp-title { color: rgba(0, 0, 0, 0.88); }
+.lcp-on-light .lcp-desc { color: rgba(0, 0, 0, 0.6); }
+.lcp-on-light .lcp-domain { color: rgba(0, 0, 0, 0.55); }
+.lcp-on-light .lcp-favicon--fallback { color: rgba(0, 0, 0, 0.55); }
+
+/* 筆記緊湊卡的 icon 縮圖：置中顯示在主色底上，不用 cover 放大糊掉 */
+.lcp-thumb--icon {
+  background-size: 44px 44px;
+  background-repeat: no-repeat;
+}
+.lcp-card--tinted .lcp-thumb--icon {
+  background-color: rgba(var(--lcp-tint), 0.85);
+}
+
+/* ============ 骨架 ============ */
+.lcp-skeleton-line {
+  border-radius: 4px;
+  background: linear-gradient(90deg,
+    var(--background-modifier-hover) 25%,
+    var(--background-modifier-border) 50%,
+    var(--background-modifier-hover) 75%
+  );
+  background-size: 200% 100%;
+  animation: lcp-shimmer 1.4s infinite;
+}
+.lcp-skeleton-line--title { height: 12px; width: 70%; }
+.lcp-thumb--skeleton {
+  background: linear-gradient(90deg,
+    var(--background-modifier-hover) 25%,
+    var(--background-modifier-border) 50%,
+    var(--background-modifier-hover) 75%
+  );
+  background-size: 200% 100%;
+  animation: lcp-shimmer 1.4s infinite;
+  border-left: none;
+}
+.lcp-card--canvas.lcp-skeleton {
+  flex-direction: column-reverse;
+}
+.lcp-card--canvas.lcp-skeleton .lcp-thumb--skeleton {
+  width: 100%;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+.lcp-card--canvas.lcp-skeleton .lcp-body {
+  flex: 0 0 auto;
+  padding: 11px 14px 12px;
+}
+@keyframes lcp-shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+@media (max-width: 480px) {
+  .lcp-card { max-width: 100%; }
+}
+
+/* ============ Live Preview ============ */
+.lcp-lp-container {
+  padding: 2px 0;
+}
+.lcp-lp-inner {
+  position: relative;
+  max-width: 420px;
+}
+.lcp-lp-inner .lcp-card {
+  margin: 0.4em 0;
+}
+.lcp-open-btn {
+  position: absolute;
+  top: 14px;
+  right: 8px;
+  width: 26px;
+  height: 26px;
+  border-radius: 7px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--background-primary);
+  border: 1px solid var(--background-modifier-border);
+  color: var(--text-muted);
+  opacity: 0;
+  transition: opacity 0.12s ease;
+  cursor: pointer;
+  z-index: 2;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+}
+.lcp-lp-inner:hover .lcp-open-btn {
+  opacity: 1;
+}
+.lcp-open-btn:hover {
+  color: var(--text-normal);
+}
+.lcp-open-btn svg {
+  width: 14px;
+  height: 14px;
+}
+.lcp-card--canvas .lcp-open-btn {
+  top: 8px;
+  right: 8px;
+}
+
+/* 行動端：沒有 hover 也沒有修飾鍵，按鈕常駐並加大觸控目標（44pt 原則） */
+.is-mobile .lcp-open-btn {
+  opacity: 1;
+  width: 36px;
+  height: 36px;
+  border-radius: 9px;
+}
+.is-mobile .lcp-open-btn svg {
+  width: 17px;
+  height: 17px;
+}
+.is-mobile .lcp-lp-inner .lcp-open-btn {
+  top: 12px;
+  right: 6px;
+}
