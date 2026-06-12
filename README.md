@@ -2,7 +2,6 @@ Turn bare URLs into Apple-style rich link cards — in Reading view, Live Previe
 
 Inspired by the link previews in Apple Freeform, Notes, and Bear: clean cards with adaptive layouts, dominant-color tinting, and offline image caching.
 
-<!-- TODO: hero screenshot here (a note + a canvas side by side) -->
 
 ## Features
 
@@ -15,7 +14,6 @@ The card layout is chosen automatically from the fetched image:
 - **Text card** — no image at all: a slim row with favicon, title, and domain. No broken-image placeholders, ever.
 
 <img width="1498" height="1510" alt="Kapture 2026-06-12 at 21 31 01" src="https://github.com/user-attachments/assets/9dbb8459-5cca-445b-a196-e9e259bfd4b0" />
-<img width="1104" height="752" alt="截圖 2026-06-12 晚上9 34 23" src="https://github.com/user-attachments/assets/01ce02ca-3483-4921-8b0b-0fd91696c4e1" />
 
 ### Canvas support
 
@@ -26,7 +24,8 @@ Pasting a URL onto a Canvas no longer embeds a live web page. The native link no
 - Double-click a card to open the link; single click/drag keeps the native select-and-move behavior
 - The bare-URL node label is hidden (the card already shows title and domain)
 
-<!-- TODO: canvas screenshot with several cards -->
+<img width="1104" height="752" alt="截圖 2026-06-12 晚上9 34 23" src="https://github.com/user-attachments/assets/01ce02ca-3483-4921-8b0b-0fd91696c4e1" />
+
 
 ### Live Preview support
 
