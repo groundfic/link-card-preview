@@ -1,4 +1,4 @@
-# Link Card Preview
+<img width="1107" height="752" alt="截圖 2026-06-12 晚上9 33 54" src="https://github.com/user-attachments/assets/ec2f3be3-574d-47f2-8286-38fd8071ddc6" /># Link Card Preview
 
 Turn bare URLs into Apple-style rich link cards — in Reading view, Live Preview, and Canvas.
 
@@ -16,7 +16,8 @@ The card layout is chosen automatically from the fetched image:
 - **Compact card** — small images and icons render as a square thumbnail on the right
 - **Text card** — no image at all: a slim row with favicon, title, and domain. No broken-image placeholders, ever.
 
-<!-- TODO: screenshot of the three layouts -->
+<img width="1498" height="1510" alt="Kapture 2026-06-12 at 21 31 01" src="https://github.com/user-attachments/assets/9dbb8459-5cca-445b-a196-e9e259bfd4b0" />
+<img width="1104" height="752" alt="截圖 2026-06-12 晚上9 34 23" src="https://github.com/user-attachments/assets/01ce02ca-3483-4921-8b0b-0fd91696c4e1" />
 
 ### Canvas support
 
