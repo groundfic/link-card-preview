@@ -994,6 +994,9 @@ class LinkCardPlugin extends Plugin {
 
       if (!contentEl.querySelector('.lcp-card')) {
         const url = data.url;
+        // 標記節點：CSS 據此隱藏裸網址標籤（取代 has 偽類選擇器，效能較好）
+        const nodeEl = node.nodeEl || contentEl.closest('.canvas-node');
+        if (nodeEl && nodeEl.classList) nodeEl.classList.add('lcp-has-card');
         contentEl.textContent = '';
         const skeleton = createSkeleton(url);
         skeleton.classList.add('lcp-card--canvas');

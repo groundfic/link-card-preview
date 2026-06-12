@@ -118,8 +118,9 @@
 }
 
 /* ============ Canvas：填滿節點、圖上文下 ============ */
-/* 隱藏 link node 上方的裸網址標籤——卡片已有標題與網域，標籤是重複資訊 */
-.canvas-node:has(.lcp-card--canvas) .canvas-node-label {
+/* 隱藏 link node 上方的裸網址標籤——卡片已有標題與網域，標籤是重複資訊。
+   lcp-has-card 由插件在插入卡片時掛上（避免 has 偽類的效能疑慮） */
+.canvas-node.lcp-has-card .canvas-node-label {
   display: none;
 }
 .canvas-node-content .lcp-card--canvas {
