@@ -19,6 +19,7 @@ try {
 const DESKTOP_UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
 const BOT_UA = 'facebookexternalhit/1.1 (+http://www.facebook.com/externalhit_uatext.php)';
 const META_TTL = 7 * 24 * 60 * 60 * 1000;
+const FAIL_TTL = 15 * 60 * 1000; // 抓取失敗的結果只快取 15 分鐘，換裝置開啟時可自動重試
 const MAX_IMAGE_BYTES = 300 * 1024;
 const DOWNSCALE_WIDTH = 640;
 
@@ -52,6 +53,30 @@ function hostOf(url) {
 function isThreadsUrl(url) {
   const h = hostOf(url);
   return h === 'threads.net' || h === 'threads.com';
+}
+
+function isInstagramUrl(url) {
+  const h = hostOf(url);
+  return h === 'instagram.com' || h === 'instagr.am';
+}
+
+// Meta 系平台共用同一套 oEmbed + 降級抓取邏輯
+function isMetaUrl(url) {
+  return isThreadsUrl(url) || isInstagramUrl(url);
+}
+
+/** 去除手機 App 分享連結附帶的追蹤參數（?igsh=、?xmt= 等）。
+ *  Meta 的 oEmbed 對帶陌生參數的網址經常直接拒絕，
+ *  這是「手機貼上失效、電腦貼上正常」的主因 */
+function canonicalMetaUrl(url) {
+  try {
+    const u = new URL(url);
+    u.search = '';
+    u.hash = '';
+    return u.href;
+  } catch {
+    return url;
+  }
 }
 
 function needsImageProxy(imageUrl) {
@@ -218,13 +243,19 @@ async function fetchGenericMeta(url) {
 
 /* ============ 抓取：Threads 特化 ============ */
 
-async function fetchThreadsMeta(url) {
-  // showDesc：Threads 的描述欄位是貼文內文本身，屬於內容本體，
-  // 不受全域 SHOW_DESCRIPTION 限制
-  const base = { title: 'Threads', description: '', image: '', hostname: hostOf(url), showDesc: true };
+async function fetchMetaPlatform(url) {
+  const ig = isInstagramUrl(url);
+  // showDesc：貼文內文本身就是內容本體，不受全域 SHOW_DESCRIPTION 限制
+  const base = {
+    title: ig ? 'Instagram' : 'Threads',
+    description: '', image: '', hostname: hostOf(url), showDesc: true,
+  };
 
   try {
-    const oembedUrl = 'https://www.threads.net/oembed/?url=' + encodeURIComponent(url);
+    // Threads 與 Instagram 的 oEmbed 都由 Meta 後端提供
+    const oembedUrl = ig
+      ? 'https://www.instagram.com/api/v1/oembed/?url=' + encodeURIComponent(url)
+      : 'https://www.threads.net/oembed/?url=' + encodeURIComponent(url);
     const res = await requestUrl({ url: oembedUrl, headers: { 'Accept': 'application/json' }, throw: false });
     if (res && res.status === 200) {
       const data = JSON.parse(res.text);
@@ -252,7 +283,7 @@ async function fetchThreadsMeta(url) {
       const meta = parseMetadata(html, url);
       if (meta.image) base.image = meta.image;
       if (!base.description && meta.description) base.description = meta.description;
-      if ((!base.title || base.title === 'Threads') && meta.title !== base.hostname) base.title = meta.title;
+      if ((!base.title || base.title === 'Threads' || base.title === 'Instagram') && meta.title !== base.hostname) base.title = meta.title;
 
       if (base.image) return base;
 
@@ -284,14 +315,19 @@ async function fetchThreadsMeta(url) {
 /* ============ 抓取入口（持久化快取） ============ */
 
 async function fetchMeta(url) {
+  // Meta 系網址先正規化，讓「手機帶 igsh」與「電腦乾淨網址」共用同一筆快取
+  if (isMetaUrl(url)) url = canonicalMetaUrl(url);
   const entry = state.cache[url];
-  if (entry && entry.meta && (Date.now() - (entry.ts || 0) < META_TTL || entry.meta.imageData)) {
-    return entry.meta;
+  if (entry && entry.meta) {
+    const ttl = entry.meta.poor ? FAIL_TTL : META_TTL;
+    if (Date.now() - (entry.ts || 0) < ttl || entry.meta.imageData) {
+      return entry.meta;
+    }
   }
 
   let meta;
   try {
-    meta = isThreadsUrl(url) ? await fetchThreadsMeta(url) : await fetchGenericMeta(url);
+    meta = isMetaUrl(url) ? await fetchMetaPlatform(url) : await fetchGenericMeta(url);
   } catch (e) {
     const hostname = hostOf(url);
     meta = { title: hostname, description: '', image: '', hostname };
@@ -301,6 +337,11 @@ async function fetchMeta(url) {
     meta.imageData = entry.meta.imageData;
     meta.layout = entry.meta.layout;
   }
+
+  // 品質判定：沒抓到圖也沒抓到實質標題／描述 → 視為失敗，走短 TTL
+  const hostname = meta.hostname;
+  meta.poor = !meta.image && !meta.imageData && !meta.description &&
+    (meta.title === hostname || meta.title === 'Threads' || meta.title === 'Instagram');
 
   state.cache[url] = { meta, ts: Date.now() };
   state.save();
@@ -445,7 +486,7 @@ async function resolveImage(pageUrl, meta) {
   }
   if (!meta.image) return { src: '', dims: null };
 
-  if (needsImageProxy(meta.image) || isThreadsUrl(pageUrl)) {
+  if (needsImageProxy(meta.image) || isMetaUrl(pageUrl)) {
     const d = await fetchImageAsDataUri(meta.image, pageUrl);
     if (d) {
       meta.imageData = d;
@@ -910,7 +951,7 @@ class LinkCardPlugin extends Plugin {
     this.registerDomEvent(document, 'paste', async (evt) => {
       if (!this.settings.threadsPasteInsert) return;
       const text = evt.clipboardData?.getData('text/plain')?.trim();
-      if (!text || !isThreadsUrl(text)) return;
+      if (!text || !isMetaUrl(text)) return;
 
       const activeView = this.app.workspace.getActiveViewOfType(MarkdownView);
       if (!activeView) return;
