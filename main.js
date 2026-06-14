@@ -20,6 +20,7 @@ const DESKTOP_UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/
 const BOT_UA = 'facebookexternalhit/1.1 (+http://www.facebook.com/externalhit_uatext.php)';
 const META_TTL = 7 * 24 * 60 * 60 * 1000;
 const FAIL_TTL = 15 * 60 * 1000; // 抓取失敗的結果只快取 15 分鐘，換裝置開啟時可自動重試
+const MAX_CACHE_ENTRIES = 500; // 快取項目上限，超過時淘汰最舊的（含 base64 圖，避免記憶體與 data.json 無限膨脹）
 const MAX_IMAGE_BYTES = 300 * 1024;
 const DOWNSCALE_WIDTH = 640;
 
@@ -321,6 +322,17 @@ async function fetchMetaPlatform(url) {
 
 /* ============ 抓取入口（持久化快取） ============ */
 
+/** 快取超過上限時，依時間戳淘汰最舊的項目（粗略 LRU）。
+ *  base64 圖佔記憶體大宗，這道閘門避免長期使用後膨脹 */
+function pruneCache() {
+  const keys = Object.keys(state.cache);
+  if (keys.length <= MAX_CACHE_ENTRIES) return;
+  keys
+    .sort((a, b) => (state.cache[a].ts || 0) - (state.cache[b].ts || 0))
+    .slice(0, keys.length - MAX_CACHE_ENTRIES)
+    .forEach((k) => delete state.cache[k]);
+}
+
 async function fetchMeta(url) {
   // Meta 系網址先正規化，讓「手機帶 igsh」與「電腦乾淨網址」共用同一筆快取
   if (isMetaUrl(url)) url = canonicalMetaUrl(url);
@@ -351,6 +363,7 @@ async function fetchMeta(url) {
     (meta.title === hostname || meta.title === 'Threads' || meta.title === 'Instagram');
 
   state.cache[url] = { meta, ts: Date.now() };
+  pruneCache();
   state.save();
   return meta;
 }
@@ -979,14 +992,27 @@ class LinkCardPlugin extends Plugin {
   }
 
   setupCanvasPatch() {
-    const tryAttach = () => {
+    // view → cleanup 函式，用來回收已關閉 Canvas 的 observer
+    this._canvasObservers = new Map();
+
+    const syncCanvasObservers = () => {
+      // 1. 對目前開著的 Canvas 掛上 observer（已掛的會被 __lcpAttached 擋掉）
+      const liveViews = new Set();
       this.app.workspace.getLeavesOfType('canvas').forEach((leaf) => {
-        this.attachToCanvas(leaf.view);
+        if (leaf.view) {
+          liveViews.add(leaf.view);
+          this.attachToCanvas(leaf.view);
+        }
       });
+      // 2. 回收已不存在於工作區的 Canvas observer（防殭屍累積）
+      for (const [view, cleanup] of this._canvasObservers) {
+        if (!liveViews.has(view)) cleanup();
+      }
     };
-    this.registerEvent(this.app.workspace.on('layout-change', tryAttach));
-    this.registerEvent(this.app.workspace.on('active-leaf-change', tryAttach));
-    tryAttach();
+
+    this.registerEvent(this.app.workspace.on('layout-change', syncCanvasObservers));
+    this.registerEvent(this.app.workspace.on('active-leaf-change', syncCanvasObservers));
+    syncCanvasObservers();
   }
 
   attachToCanvas(view) {
@@ -1016,52 +1042,42 @@ class LinkCardPlugin extends Plugin {
 
     const obs = new MutationObserver(scheduleProcess);
     obs.observe(root, { childList: true, subtree: true });
-    this.register(() => {
+
+    const cleanup = () => {
       obs.disconnect();
-      if (pending) clearTimeout(pending);
-    });
+      if (pending) { clearTimeout(pending); pending = null; }
+      view.__lcpAttached = false;
+      this._canvasObservers.delete(view);
+    };
+    // 集中追蹤所有作用中的 Canvas observer，供 layout-change 時回收殭屍項
+    this._canvasObservers.set(view, cleanup);
+    // 插件卸載時一併清理
+    this.register(cleanup);
     processAll();
   }
 
   /* 冪等修復：每次掃描時清除 webview、補回缺失的卡片。
      已有卡片的節點是 no-op，成本只有一次 querySelector */
-  // 切換 YouTube 設定後，重整開啟中的 Canvas 視圖裡的 YouTube 節點
-  refreshCanvasYouTube() {
-    const embed = this.settings.youtubeCanvasEmbed;
-    this.app.workspace.getLeavesOfType('canvas').forEach((leaf) => {
-      const view = leaf.view;
-      if (!view || !view.canvas) return;
-      view.canvas.nodes?.forEach((node) => {
-        try {
-          const data = node.getData?.();
-          if (!data || data.type !== 'link' || !isYouTubeUrl(data.url)) return;
-          const contentEl = node.contentEl
-            || node.nodeEl?.querySelector('.canvas-node-content');
-          if (!contentEl) return;
-          const nodeEl = node.nodeEl || contentEl.closest('.canvas-node');
-
-          if (embed) {
-            // 改為嵌入：移除我們塞的卡片並清空，Canvas 的 MutationObserver
-            // 偵測到內容消失會自動重建原生 iframe 播放器
-            const card = contentEl.querySelector('.lcp-card');
-            if (card) {
-              contentEl.textContent = '';
-              if (nodeEl && nodeEl.classList) nodeEl.classList.remove('lcp-has-card');
-              // 用節點自己的 render 重建（若有），否則靠 observer 補上
-              if (typeof node.render === 'function') node.render();
-            }
-          } else {
-            // 改為卡片：清掉 iframe，下一輪 processCanvasNode 會補上卡片
-            contentEl.querySelectorAll('iframe, webview').forEach((f) => {
-              try { f.src = 'about:blank'; } catch (e) {}
-              f.remove();
-            });
-            this.processCanvasNode(node);
-          }
-        } catch (e) {}
+  // 切換 YouTube 設定後，提示使用者重開 Canvas。
+  // 不做即時 DOM 切換——重開時讀新設定走對路徑，100% 可靠、無半套狀態。
+  notifyCanvasYouTubeChange() {
+    const hasOpenCanvasWithYouTube = this.app.workspace
+      .getLeavesOfType('canvas')
+      .some((leaf) => {
+        const view = leaf.view;
+        if (!view || !view.canvas) return false;
+        let found = false;
+        view.canvas.nodes?.forEach((node) => {
+          try {
+            const data = node.getData?.();
+            if (data && data.type === 'link' && isYouTubeUrl(data.url)) found = true;
+          } catch (e) {}
+        });
+        return found;
       });
-    });
-    new Notice('YouTube display updated. If a node looks stuck, reopen the canvas.');
+    if (hasOpenCanvasWithYouTube) {
+      new Notice('YouTube display setting changed. Reopen the canvas to apply it.');
+    }
   }
 
   processCanvasNode(node) {
@@ -1141,7 +1157,7 @@ class LinkCardSettingTab extends PluginSettingTab {
               cache: state.cache,
               settings: this.plugin.settings,
             });
-            this.plugin.refreshCanvasYouTube();
+            this.plugin.notifyCanvasYouTubeChange();
           })
       );
   }
