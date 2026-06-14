@@ -1,7 +1,7 @@
 {
   "id": "link-card-preview",
   "name": "Link Card Preview",
-  "version": "1.1.1",
+  "version": "1.2.0",
   "minAppVersion": "1.5.0",
   "description": "Turn bare URLs into Apple-style rich link cards in Reading view, Live Preview, and Canvas, with adaptive layouts, dominant-color tinting, and offline image caching.",
   "author": "Groundfic",

@@ -25,6 +25,7 @@ const DOWNSCALE_WIDTH = 640;
 
 const DEFAULT_SETTINGS = {
   threadsPasteInsert: true, // 貼上 Threads 連結時自動插入貼文文字
+  youtubeCanvasEmbed: false, // Canvas 中 YouTube 連結：false=卡片預覽，true=保留原生嵌入
 };
 
 /* Apple 風格設定 */
@@ -58,6 +59,12 @@ function isThreadsUrl(url) {
 function isInstagramUrl(url) {
   const h = hostOf(url);
   return h === 'instagram.com' || h === 'instagr.am';
+}
+
+function isYouTubeUrl(url) {
+  const h = hostOf(url);
+  return h === 'youtube.com' || h === 'youtu.be' || h === 'm.youtube.com'
+    || h === 'music.youtube.com';
 }
 
 // Meta 系平台共用同一套 oEmbed + 降級抓取邏輯
@@ -1018,6 +1025,45 @@ class LinkCardPlugin extends Plugin {
 
   /* 冪等修復：每次掃描時清除 webview、補回缺失的卡片。
      已有卡片的節點是 no-op，成本只有一次 querySelector */
+  // 切換 YouTube 設定後，重整開啟中的 Canvas 視圖裡的 YouTube 節點
+  refreshCanvasYouTube() {
+    const embed = this.settings.youtubeCanvasEmbed;
+    this.app.workspace.getLeavesOfType('canvas').forEach((leaf) => {
+      const view = leaf.view;
+      if (!view || !view.canvas) return;
+      view.canvas.nodes?.forEach((node) => {
+        try {
+          const data = node.getData?.();
+          if (!data || data.type !== 'link' || !isYouTubeUrl(data.url)) return;
+          const contentEl = node.contentEl
+            || node.nodeEl?.querySelector('.canvas-node-content');
+          if (!contentEl) return;
+          const nodeEl = node.nodeEl || contentEl.closest('.canvas-node');
+
+          if (embed) {
+            // 改為嵌入：移除我們塞的卡片並清空，Canvas 的 MutationObserver
+            // 偵測到內容消失會自動重建原生 iframe 播放器
+            const card = contentEl.querySelector('.lcp-card');
+            if (card) {
+              contentEl.textContent = '';
+              if (nodeEl && nodeEl.classList) nodeEl.classList.remove('lcp-has-card');
+              // 用節點自己的 render 重建（若有），否則靠 observer 補上
+              if (typeof node.render === 'function') node.render();
+            }
+          } else {
+            // 改為卡片：清掉 iframe，下一輪 processCanvasNode 會補上卡片
+            contentEl.querySelectorAll('iframe, webview').forEach((f) => {
+              try { f.src = 'about:blank'; } catch (e) {}
+              f.remove();
+            });
+            this.processCanvasNode(node);
+          }
+        } catch (e) {}
+      });
+    });
+    new Notice('YouTube display updated. If a node looks stuck, reopen the canvas.');
+  }
+
   processCanvasNode(node) {
     try {
       const data = node.getData?.();
@@ -1026,6 +1072,13 @@ class LinkCardPlugin extends Plugin {
       const contentEl = node.contentEl
         || node.nodeEl?.querySelector('.canvas-node-content');
       if (!contentEl) return;
+
+      // YouTube 且使用者選擇保留嵌入：不卡片化，維持原生 iframe 播放器
+      if (isYouTubeUrl(data.url) && this.settings.youtubeCanvasEmbed) {
+        const nodeEl = node.nodeEl || contentEl.closest('.canvas-node');
+        if (nodeEl && nodeEl.classList) nodeEl.classList.remove('lcp-has-card');
+        return;
+      }
 
       const frames = contentEl.querySelectorAll('iframe, webview');
       frames.forEach((f) => {
@@ -1073,6 +1126,22 @@ class LinkCardSettingTab extends PluginSettingTab {
               cache: state.cache,
               settings: this.plugin.settings,
             });
+          })
+      );
+
+    new Setting(containerEl)
+      .setName('Embed YouTube in Canvas')
+      .setDesc('Keep the native embedded player for YouTube links on Canvas instead of showing a link card. Other links are unaffected.')
+      .addToggle((toggle) =>
+        toggle
+          .setValue(this.plugin.settings.youtubeCanvasEmbed)
+          .onChange(async (value) => {
+            this.plugin.settings.youtubeCanvasEmbed = value;
+            await this.plugin.saveData({
+              cache: state.cache,
+              settings: this.plugin.settings,
+            });
+            this.plugin.refreshCanvasYouTube();
           })
       );
   }
