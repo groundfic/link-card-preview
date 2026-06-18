@@ -340,3 +340,15 @@
   top: 12px;
   right: 6px;
 }
+
+
+/* 圖片載入前的底色：有主色就用主色打底，讓圖片淡入是同色過渡而非灰塊閃現 */
+.lcp-card--tinted .lcp-hero,
+.lcp-card--tinted .lcp-thumb {
+  background-color: rgba(var(--lcp-tint), 0.18);
+}
+/* 圖片以淡入呈現，消除「灰→圖」的突兀感 */
+.lcp-hero,
+.lcp-thumb {
+  transition: background-image 0.2s ease-in;
+}

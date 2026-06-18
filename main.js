@@ -140,6 +140,45 @@ function arrayBufferToBase64(buffer) {
 
 /* ============ Metadata 解析 ============ */
 
+/** 依編碼正確解碼 requestUrl 的回應。
+ *  res.text 一律當 UTF-8，會讓 Shift_JIS / EUC-JP（日文老站）、Big5（中文老站）變亂碼。
+ *  改讀 arrayBuffer，從 HTTP charset 或 HTML 內 <meta charset> 偵測真正編碼再解。 */
+function decodeHtml(res) {
+  const buf = res.arrayBuffer;
+  if (!buf) return res.text || '';
+
+  // 1. 先從 HTTP header 的 content-type 找 charset
+  let charset = '';
+  const ct = (res.headers?.['content-type'] || res.headers?.['Content-Type'] || '').toLowerCase();
+  let m = ct.match(/charset=([^;]+)/);
+  if (m) charset = m[1].trim();
+
+  // 2. header 沒有就用 UTF-8 先粗解前 2KB，從 <meta> 找 charset 宣告
+  if (!charset) {
+    try {
+      const head = new TextDecoder('utf-8').decode(buf.slice(0, 2048)).toLowerCase();
+      m = head.match(/<meta[^>]+charset=["']?([\w-]+)/)
+        || head.match(/charset\s*=\s*["']?([\w-]+)/);
+      if (m) charset = m[1].trim();
+    } catch (e) {}
+  }
+
+  // 3. 正規化常見別名
+  charset = (charset || 'utf-8').replace(/^x-/, '');
+  if (charset === 'shift-jis' || charset === 'shift_jis' || charset === 'sjis') charset = 'shift_jis';
+  if (charset === 'euc-jp') charset = 'euc-jp';
+  if (charset === 'big5' || charset === 'big5-hkscs') charset = 'big5';
+  if (charset === 'gb2312' || charset === 'gbk') charset = 'gbk';
+
+  // 4. 用偵測到的編碼解碼；不支援就退回 UTF-8
+  try {
+    return new TextDecoder(charset).decode(buf);
+  } catch (e) {
+    try { return new TextDecoder('utf-8').decode(buf); }
+    catch (e2) { return res.text || ''; }
+  }
+}
+
 function parseMetadata(html, url) {
   const hostname = hostOf(url);
   let doc = null;
@@ -227,9 +266,11 @@ async function fetchGenericMeta(url) {
         },
         throw: false,
       });
-      if (!res || res.status >= 400 || !res.text) continue;
+      if (!res || res.status >= 400) continue;
+      const htmlText = decodeHtml(res);
+      if (!htmlText) continue;
 
-      const meta = parseMetadata(res.text, url);
+      const meta = parseMetadata(htmlText, url);
       if (!best) {
         best = meta;
       } else {
@@ -285,8 +326,9 @@ async function fetchMetaPlatform(url) {
         headers: { 'User-Agent': ua, 'Accept': 'text/html,application/xhtml+xml' },
         throw: false,
       });
-      if (!res || res.status >= 400 || !res.text) continue;
-      const html = res.text;
+      if (!res || res.status >= 400) continue;
+      const html = decodeHtml(res);
+      if (!html) continue;
 
       const meta = parseMetadata(html, url);
       if (meta.image) base.image = meta.image;
@@ -331,6 +373,20 @@ function pruneCache() {
     .sort((a, b) => (state.cache[a].ts || 0) - (state.cache[b].ts || 0))
     .slice(0, keys.length - MAX_CACHE_ENTRIES)
     .forEach((k) => delete state.cache[k]);
+}
+
+/** 同步查詢快取是否命中且仍有效（不發任何請求）。
+ *  命中回傳 meta，未命中或過期回傳 null。
+ *  用於渲染時判斷可否跳過骨架、直接畫卡片。 */
+function getCachedMeta(url) {
+  const key = isMetaUrl(url) ? canonicalMetaUrl(url) : url;
+  const entry = state.cache[key];
+  if (!entry || !entry.meta) return null;
+  const ttl = entry.meta.poor ? FAIL_TTL : META_TTL;
+  if (Date.now() - (entry.ts || 0) < ttl || entry.meta.imageData) {
+    return entry.meta;
+  }
+  return null;
 }
 
 async function fetchMeta(url) {
@@ -614,16 +670,35 @@ function buildDesc(meta) {
 }
 
 async function renderCard(wrap, url, meta, opts = {}) {
-  const { src, dims } = await resolveImage(url, meta);
+  /* 快速路徑（同步、不閃骨架）只在「能安全直接顯示」時啟用：
+     A. 已有本地 base64 圖 + 尺寸 → 直接用，最安全
+     B. 確定無圖的純文字卡 → 無需載圖
+     C. 直連圖但「不需防盜連代理」+ 已有尺寸 → 網址可直接顯示
+     其餘情況（需代理但還沒下載成 base64、缺尺寸等）一律走 resolveImage，
+     避免把被 CDN 擋的網址當 src 而破圖／空卡。 */
+  let src, dims, tint;
+  const hasLocalImg = !!meta.imageData && !!meta.dims;
+  const noImg = !meta.image && !meta.imageData;
+  const safeDirectImg = !!meta.image && !!meta.dims &&
+    !needsImageProxy(meta.image) && !isMetaUrl(url);
 
-  /* 主色：版型決策前先取得（icon 卡要用它鋪整片底色），每個網址只算一次 */
-  let tint = null;
-  if (src) {
-    tint = meta.tint;
-    if (tint === undefined) {
-      tint = await extractDominantColor(src);
-      meta.tint = tint || null;
-      state.save();
+  if (hasLocalImg) {
+    src = meta.imageData; dims = meta.dims; tint = meta.tint || null;
+  } else if (noImg) {
+    src = ''; dims = null; tint = null;
+  } else if (safeDirectImg) {
+    src = meta.image; dims = meta.dims; tint = meta.tint || null;
+  } else {
+    // 慢但可靠：處理防盜連代理、補尺寸、補主色
+    ({ src, dims } = await resolveImage(url, meta));
+    tint = null;
+    if (src) {
+      tint = meta.tint;
+      if (tint === undefined) {
+        tint = await extractDominantColor(src);
+        meta.tint = tint || null;
+        state.save();
+      }
     }
   }
 
@@ -997,16 +1072,16 @@ class LinkCardPlugin extends Plugin {
 
     const syncCanvasObservers = () => {
       // 1. 對目前開著的 Canvas 掛上 observer（已掛的會被 __lcpAttached 擋掉）
-      const liveViews = new Set();
       this.app.workspace.getLeavesOfType('canvas').forEach((leaf) => {
-        if (leaf.view) {
-          liveViews.add(leaf.view);
-          this.attachToCanvas(leaf.view);
-        }
+        if (leaf.view) this.attachToCanvas(leaf.view);
       });
-      // 2. 回收已不存在於工作區的 Canvas observer（防殭屍累積）
+      // 2. 只回收「DOM 已脫離文件」的 observer。
+      //    用 document.contains 判斷，而非「是否在分頁清單」——
+      //    切換分頁時背景 Canvas 的 DOM 仍在文件中，不該回收、不該重掛載，
+      //    這樣切分頁不會重新渲染卡片（修正 1.2.1 的重載感）。
       for (const [view, cleanup] of this._canvasObservers) {
-        if (!liveViews.has(view)) cleanup();
+        const root = view.canvas?.canvasEl || view.containerEl;
+        if (!root || !root.isConnected) cleanup();
       }
     };
 
@@ -1108,12 +1183,26 @@ class LinkCardPlugin extends Plugin {
         const nodeEl = node.nodeEl || contentEl.closest('.canvas-node');
         if (nodeEl && nodeEl.classList) nodeEl.classList.add('lcp-has-card');
         contentEl.textContent = '';
-        const skeleton = createSkeleton(url);
-        skeleton.classList.add('lcp-card--canvas');
-        contentEl.appendChild(skeleton);
-        fetchMeta(url).then((meta) => {
-          renderCard(skeleton, url, meta, { canvas: true });
-        });
+
+        // 一律先放骨架佔位（確保任何情況下節點都有可見內容，不會空白）
+        const sk = createSkeleton(url);
+        sk.classList.add('lcp-card--canvas');
+        contentEl.appendChild(sk);
+
+        const cached = getCachedMeta(url);
+        const metaPromise = cached ? Promise.resolve(cached) : fetchMeta(url);
+        metaPromise
+          .then((meta) => renderCard(sk, url, meta, { canvas: true }))
+          .catch((e) => {
+            // renderCard 失敗也不留空白：退回最基本的網域卡
+            try {
+              const fallback = {
+                title: hostOf(url), description: '', image: '', hostname: hostOf(url),
+              };
+              renderCard(sk, url, fallback, { canvas: true });
+            } catch (e2) {}
+            console.log('[LCP] canvas render failed:', e && e.message);
+          });
       }
     } catch (e) {}
   }
